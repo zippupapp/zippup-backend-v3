@@ -174,4 +174,3 @@ model Vendor {
 
   @@map("vendors")
 }
-Click "Commit new
