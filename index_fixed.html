@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <title>ZippUp — On‑Demand Services</title>
+  <meta name="theme-color" content="#2563EB"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+
+  <!-- SDKs -->
+  <script src="https://js.stripe.com/v3"></script>
+  <script src="https://checkout.flutterwave.com/v3.js"></script>
+  <script defer src="https://unpkg.com/@supabase/supabase-js@2"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root {
+      --primary:#2563EB; --primary-600:#1D4ED8; --bg:#F9FAFB; --card:#FFFFFF; --text:#111827;
+      --muted:#6B7280; --danger:#DC2626; --success:#10B981; --border:#E5E7EB; --radius:14px;
+      --shadow:0 8px 24px rgba(17,24,39,.08);
+      --header-h:56px; --nav-h:64px;
+    }
+    * { box-sizing:border-box; margin:0; padding:0 }
+    html, body { width:100%; height:100%; max-width:100%; overflow-x:hidden; -webkit-text-size-adjust:100% }
+    body { font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,sans-serif; background:var(--bg); color:var(--text) }
+
+    header {
+      position:fixed; top:0; left:0; right:0; height:var(--header-h); z-index:100;
+      background:var(--card); border-bottom:1px solid var(--border); display:flex; align-items:center;
+      padding-top: env(safe-area-inset-top, 0px);
+    }
+    header .row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px; width:100% }
+    .small { color:var(--muted); font-size:13px }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 14px; border-radius:12px; border:0; cursor:pointer; font-weight:600 }
+    .btn.primary { background:var(--primary); color:#fff }
+    .btn.primary:hover { background:var(--primary-600) }
+    .btn.ghost { background:#F3F4F6 }
+    .btn.block { width:100% }
+
+    .search { padding:16px }
+    .search .box { display:flex; gap:8px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px 10px }
+    .search input { flex:1; border:0; outline:0; font-size:15px }
+    .section { padding:12px 16px }
+    .title { font-weight:700; margin-bottom:10px }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; max-width:100% }
+    @media(min-width:720px){ .grid{ grid-template-columns:repeat(3,minmax(0,1fr)) } }
+    .card { background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow) }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+    .badge { padding:4px 8px; font-size:12px; border-radius:999px }
+    .success{ background:#ECFDF5; color:#065F46 }
+    .muted { color:var(--muted) }
+    .avatar { width:40px; height:40px; border-radius:50%; object-fit:cover; border:1px solid var(--border); background:#eef2ff; display:flex; align-items:center; justify-content:center; font-size:18px }
+    .field { display:flex; flex-direction:column; gap:6px }
+    .field input, .field textarea, .field select { padding:10px; border:1px solid var(--border); border-radius:10px }
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:100% }
+    .price { font-weight:700; color:#111 }
+    .hint { font-size:12px; color:#6b7280 }
+
+    .nav {
+      position:fixed; left:0; right:0; bottom:0; height:var(--nav-h);
+      display:flex; align-items:center; justify-content:space-around; background:#fff; border-top:1px solid var(--border); z-index:90;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .nav button { background:none; border:0; padding:8px 10px; border-radius:10px; color:var(--muted) }
+    .nav button.active { color:var(--primary); background:#EFF6FF }
+
+    .page {
+      position:fixed; top:calc(var(--header-h) + env(safe-area-inset-top, 0px)); bottom:var(--nav-h); left:0; right:0;
+      overflow-y:auto; overflow-x:hidden; display:none; -webkit-overflow-scrolling:touch; background:var(--bg);
+    }
+    .page.active { display:block }
+
+    .modal { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; z-index:200; padding:16px }
+    .modal.open { display:flex }
+    .sheet { width:100%; max-width:720px; background:#fff; border-radius:16px; border:1px solid var(--border); box-shadow:var(--shadow); max-width:100% }
+    .sheet .head { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between }
+    .sheet .body { padding:16px }
+
+    .floating-panic { position:fixed; right:16px; bottom:80px; width:60px; height:60px; border-radius:50%; background:var(--danger); color:#fff; border:0; font-size:20px; box-shadow:var(--shadow); z-index:96; display:flex; align-items:center; justify-content:center }
+
+    #cartBtn, #headerCartBadge { display:none !important; }
+
+    .product img { width:100%; height:140px; object-fit:cover; border-radius:10px; border:1px solid var(--border) }
+
+    header .row { align-items:center; }
+    header .row > .left { flex:1; min-width:0; }
+    #notifBtn { margin-right:6px; }
+
+    #checkoutModal .sheet, #sellModal .sheet, #trackModal .sheet { height: calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px)); display:flex; flex-direction:column; }
+    #checkoutModal .sheet .body, #sellModal .sheet .body, #trackModal .sheet .body { flex:1; overflow:auto; }
+
+    /* scrolling comfort for manage-products and marketplace */
+    #page-manage-products, #page-marketplace { overflow-x:auto; overflow-y:auto; }
+
+    .backbar { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--border); z-index:5; display:flex; align-items:center; gap:8px; padding:8px 4px 8px 0; }
+
+    /* Support FAQ styles */
+    #faqList .q { font-weight:700; cursor:pointer }
+    #faqList .a { display:none; color:#374151 }
+    #faqList .item { padding:10px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:#fff }
+    /* Make these pages scroll both ways */
+#page-manage-services,
+#page-emergency-contacts,
+#page-support { overflow-x: auto; overflow-y: auto; }
+
+/* Profile list: align buttons with chevron to indicate navigation */
+#page-profile .list > button {
+  width: 100%;
+  justify-content: space-between;
+}
+#page-profile .list > button::after {
+  content: '›';
+  opacity: .6;
+}
+
+/* Dark mode variables */
+body[data-theme="dark"] {
+  --bg:#0B1020; --card:#0F172A; --text:#E5E7EB; --muted:#9CA3AF;
+  --border:#1F2A44; --primary:#3B82F6; --primary-600:#2563EB; --shadow:0 8px 24px rgba(0,0,0,.35);
+}
+body[data-theme="dark"] .card,
+body[data-theme="dark"] .sheet { background: var(--card); border-color: var(--border); }
+body[data-theme="dark"] .search .box { background: var(--card); border-color: var(--border); }
+
+/* Marketplace advisory note */
+#marketAdvisory {
+  background:#FFF7ED; border:1px solid #FED7AA; color:#7C2D12;
+  border-radius:12px; padding:10px; margin:10px 16px; font-size:13px;
+}
+
+/* Promotions strip */
+#promoStrip {
+  margin: 8px 16px 0; overflow: hidden; border:1px solid var(--border); border-radius:12px; background:#fff;
+}
+#promoStrip .inner {
+  display:flex; gap:16px; padding:10px; white-space:nowrap; animation: slidePromo 24s linear infinite;
+}
+@keyframes slidePromo {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Green action button */
+.btn.success { background: var(--success); color:#fff; }
+.btn.success:hover { filter: brightness(0.95); }
+
+/* Admin page */
+#page-admin { overflow-x:auto; overflow-y:auto; }
+.admin-tabs { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 12px; }
+.admin-tabs .btn.active { background:var(--primary); color:#fff; }
+.admin-grid { display:grid; grid-template-columns:1fr; gap:12px; }
+@media(min-width:720px){ .admin-grid { grid-template-columns:1fr 1fr; } }
+.admin-note { font-size:12px; color:var(--muted) }
+
+/* Promotions board under Emergency */
+#promoBoard { margin:12px 16px; }
+#promoGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+@media(min-width:720px){ #promoGrid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+.promoCard { background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px; }
+
+/* Image upload preview styles */
+.image-preview { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.image-preview img { width:60px; height:60px; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
+.image-upload-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px; }
+.image-slot { 
+  width:60px; height:60px; border:2px dashed var(--border); border-radius:8px; 
+  display:flex; align-items:center; justify-content:center; cursor:pointer; position:relative;
+}
+.image-slot.filled { border:1px solid var(--border); }
+.image-slot img { width:100%; height:100%; object-fit:cover; border-radius:6px; }
+.image-slot .remove { position:absolute; top:-4px; right:-4px; background:var(--danger); color:#fff; border:0; border-radius:50%; width:20px; height:20px; font-size:12px; cursor:pointer; }
+
+/* Edit button styles */
+.edit-btn { 
+  background: #f59e0b; 
+  color: white; 
+  border: none; 
+  padding: 6px 12px; 
+  border-radius: 6px; 
+  cursor: pointer; 
+  font-size: 12px;
+}
+.edit-btn:hover { background: #d97706; }
+
+/* Marketplace image grid */
+.marketplace-images { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:8px; }
+.marketplace-images .image-slot { width:100%; height:80px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="row">
+      <div class="left"></div>
+      <div class="row">
+        <button class="btn ghost" id="notifBtn" type="button" title="Notifications">🔔</button>
+        <div style="position:relative">
+          <button class="btn ghost" id="profileBtn" type="button">👤 Account</button>
+          <div id="profileMenu" style="position:absolute; right:0; top:110%; display:none; background:#fff; border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); min-width:220px; z-index:300; padding:6px">
+            <button class="btn ghost" id="menuProfile" type="button">👤 Profile</button>
+            <button class="btn ghost" id="menuOrders" type="button">📦 Manage Orders</button>
+            <button class="btn ghost" id="menuWallet" type="button">💰 Wallet</button>
+            <button class="btn ghost" id="menuTopup" type="button">⚡ Top‑up (Digital)</button>
+            <button class="btn ghost" id="menuSupport" type="button">🆘 Contact Support</button>
+            <button class="btn ghost" id="menuLogout" type="button">🚪 Logout</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main id="page-home" class="page active">
+    <section class="section">
+      <div class="small">📍 <span id="userLocUnder">Detecting location…</span></div>
+    </section>
+    <section class="section">
+      <div id="homeMap" style="height:180px;border-radius:12px;border:1px solid var(--border)"></div>
+    </section>
+    <section class="search">
+      <div class="box">
+        <input id="search" placeholder="Search transport, food, services, emergency…"/>
+        <button class="btn ghost" id="voiceBtn" type="button">🎤</button>
+        <button class="btn primary" id="searchBtn" type="button">Search</button>
+      </div>
+    </section>
+    <section class="section">
+      <div class="title">All Services</div>
+      <div class="grid" id="servicesGrid"></div>
+    </section>
+    <section class="section">
+      <div class="title">Emergency</div>
+      <div class="grid" id="emergencyGrid"></div>
+    </section>
+    <section id="promoBoard">
+      <div class="section">
+        <div class="title">Promotions & suggestions</div>
+        <div id="promoGrid">
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">🍔</div><strong>10% off first food order</strong></div>
+          </div>
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">🚗</div><strong>Taxi & truck booking</strong></div>
+          </div>
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">🛠️</div><strong>Hire verified providers</strong></div>
+          </div>
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">💳</div><strong>Pay securely with Stripe</strong></div>
+          </div>
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">🎁</div><strong>Refer & earn coupons</strong></div>
+          </div>
+          <div class="promoCard">
+            <div class="row"><div style="font-size:22px">🛍️</div><strong>Marketplace deals near you</strong></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="page-marketplace" class="page">
+    <section class="section">
+      <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="title" style="margin:0">Marketplace</div>
+        <button class="btn ghost" id="sellProductsBtn" type="button">Sell Products</button>
+      </div>
+      <div class="search">
+        <div class="box">
+          <input id="mpSearch" placeholder="Search products…"/>
+          <button class="btn ghost" id="mpVoice" type="button">🎤</button>
+          <button class="btn primary" id="mpSearchBtn" type="button">Search</button>
+        </div>
+      </div>
+      <div class="row" id="mpChips" style="gap:6px;margin:8px 0"></div>
+      <div class="grid" id="mpGrid"></div>
+    </section>
+  </main>
+
+  <main id="page-profile" class="page">
+    <section class="section">
+      <div class="title">Profile</div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <div class="row">
+            <div id="user-avatar" style="width:48px;height:48px;border-radius:50%;background:#E5EDFF;display:flex;align-items:center;justify-content:center">👤</div>
+            <div style="margin-left:8px">
+              <div><strong id="profName">Guest</strong> <span class="small muted">(Public name)</span></div>
+              <div class="small" id="profEmail">guest@example.com</div>
+            </div>
+          </div>
+          <button class="btn primary" id="editProfileBtn" type="button">Edit</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <div><strong>Availability</strong><div class="small muted">Go Offline / Available</div></div>
+          <label style="position:relative;display:inline-block;width:48px;height:28px">
+            <input id="availToggle" type="checkbox" style="display:none"/>
+            <span id="availTrack" style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#d1d5db;border-radius:999px;transition:.2s"></span>
+            <span id="availKnob" style="position:absolute;left:3px;top:3px;width:22px;height:22px;background:#fff;border-radius:999px;transition:.2s"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="list" style="margin-top:12px">
+        <button class="btn ghost" id="manageServicesBtn" type="button">Manage Services</button>
+        <button class="btn ghost" id="manageProductsBtn" type="button">Manage Product (Food Vendors Only)</button>
+        <button class="btn ghost" id="emergencyContactsBtn" type="button">Emergency Contacts</button>
+        <button class="btn ghost" id="providerVerifyBtn" type="button">Become Verified Provider</button>
+        <button class="btn ghost" id="openSupportBtn" type="button">Contact Support</button>
+      </div>
+    </section>
+  </main>
+
+  <main id="page-orders" class="page">
+    <section class="section">
+      <div class="title">Manage Orders</div>
+      <button class="btn success" id="openConfirmCode" type="button" style="margin:6px 0">Confirm Delivery</button>
+      <div class="card">
+        <div class="list">
+          <div class="small muted">Active</div>
+          <div id="buyerOrders" class="list"></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="list">
+          <div class="small muted">History</div>
+          <div id="sellerOrders" class="list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="page-wallet" class="page">
+    <section class="section">
+      <div class="title">Wallet</div>
+      <div class="card">Balance: <strong id="walletBalance">$0.00</strong></div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn ghost" id="walletAdd" type="button">Add Funds (Coming soon)</button>
+        <button class="btn ghost" id="walletCashOut" type="button">Cash Out (Coming soon)</button>
+        <button class="btn ghost" id="walletSend" type="button">Send to user</button>
+        <button class="btn ghost" id="walletCards" type="button">Saved cards</button>
+      </div>
+      <div class="title" style="margin-top:12px">Transactions</div>
+      <div id="walletTx" class="grid"></div>
+    </section>
+  </main>
+
+  <main id="page-digital" class="page">
+    <section class="section">
+      <div class="title">Digital Services</div>
+      <div class="grid" style="margin-top:8px">
+        <div class="card service">📱 Buy Airtime</div>
+        <div class="card service">📶 Buy Data</div>
+        <div class="card service">🧾 Pay Bills</div>
+        <div class="card service">🛒 Digital Products</div>
+      </div>
+      <div class="small muted" style="margin-top:8px">Coming soon</div>
+    </section>
+  </main>
+
+  <main id="page-manage-services" class="page">
+    <section class="section">
+      <div class="backbar"><button class="btn ghost" id="msBack" type="button">← Back</button><strong>Manage Services</strong></div>
+      <div class="card">
+        <div class="list">
+          <div class="grid-2">
+            <div class="field">
+              <label class="small">Category</label>
+              <select id="msCategory">
+                <option value="transport">Transport</option>
+                <option value="food">Food</option>
+                <option value="tech">Tech Services</option>
+                <option value="home">Home Services</option>
+                <option value="construction">Construction</option>
+                <option value="auto">Automobile Repair</option>
+                <option value="others">Others</option>
+              </select>
+            </div>
+            <div class="field" id="msTransportSubWrap" style="display:none">
+              <label class="small">Transport type</label>
+              <select id="msTransportSub">
+                <option value="taxi">Ride / Taxi</option>
+                <option value="truck">Truck / Backie</option>
+              </select>
+            </div>
+            <div class="field" id="msTypeWrap">
+              <label class="small">Service type</label>
+              <input id="msType" placeholder="e.g., Driver, Plumber"/>
+            </div>
+          </div>
+          <div class="field">
+            <label class="small">Details</label>
+            <textarea id="msDetails" rows="3" placeholder="Describe your service…"></textarea>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label class="small">Price (per 1–2hr)</label>
+              <input id="msPrice" type="number" min="0" step="0.01" placeholder="e.g., 50"/>
+            </div>
+            <div class="field">
+              <label class="small">Catalog images (up to 4)</label>
+              <input id="msImages" type="file" accept="image/*" multiple/>
+              <div class="hint">Optional</div>
+            </div>
+          </div>
+          <button class="btn primary" id="msAdd" type="button">+ Add Service</button>
+        </div>
+      </div>
+      <div class="list" style="margin-top:12px" id="msList"></div>
+    </section>
+  </main>
+
+  <main id="page-manage-products" class="page">
+    <section class="section">
+      <div class="backbar"><button class="btn ghost" id="mpBack" type="button">← Back</button><strong>Manage Product (Food Vendors Only)</strong></div>
+      <div class="card">
+        <div class="small muted" style="margin-bottom:8px">Upload multiple items per batch; up to 5 images per item; set payment options.</div>
+        <div id="foodItemsForm"></div>
+        <button class="btn ghost" id="addFoodRow" type="button">+ Add another item</button>
+        <button class="btn primary" id="saveFoodItems" type="button" style="margin-top:10px">Save items</button>
+      </div>
+      <div class="list" id="foodItemsList" style="margin-top:12px"></div>
+    </section>
+  </main>
+
+  <main id="page-emergency-contacts" class="page">
+    <section class="section">
+      <div class="backbar"><button class="btn ghost" id="ecBack" type="button">← Back</button><strong>Emergency Contacts</strong></div>
+      <div class="card">
+        <div class="small muted">Add up to 5 contacts (name and phone).</div>
+        <div id="ecForm" class="list" style="margin-top:10px"></div>
+        <button class="btn primary" id="ecSave" type="button">Save Contacts</button>
+      </div>
+    </section>
+  </main>
+
+  <main id="page-verify-provider" class="page">
+    <section class="section">
+      <div class="backbar"><button class="btn ghost" id="vpBack" type="button">← Back</button><strong>Become Verified Provider</strong></div>
+      <div class="card">
+        <div class="list">
+          <div class="field"><label class="small">Full name</label><input id="vpName" placeholder="Your name"/></div>
+          <div class="field"><label class="small">Address</label><input id="vpAddress" placeholder="Your address"/></div>
+          <div class="field"><label class="small">Service category</label><input id="vpCategory" placeholder="e.g., Driver, Plumber"/></div>
+          <div class="field"><label class="small">ID number</label><input id="vpId" placeholder="Your ID"/></div>
+          <div class="field"><label class="small">ID/Passport docs</label><input id="vpIdDocs" type="file" accept="image/*,application/pdf" multiple/></div>
+          <div class="field"><label class="small">Business/License docs</label><input id="vpBizDocs" type="file" accept="image/*,application/pdf" multiple/></div>
+          <button class="btn primary" id="vpSubmit" type="button">Submit for Verification</button>
+          <div id="vpStatus" class="small" style="color:#2563EB"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="page-support" class="page">
+    <section class="section">
+      <div class="backbar"><button class="btn ghost" id="supportBack" type="button">← Back</button><strong>Contact Support</strong></div>
+      <div class="card">
+        <div class="list">
+          <div class="title" style="margin-top:0">Help center</div>
+          <div id="faqList"></div>
+          <div class="small muted" style="margin:8px 0 6px">Not satisfied with the answers? Fill the form below to contact support.</div>
+          <div class="grid-2">
+            <div class="field"><label class="small">Full name</label><input id="supName" placeholder="Your name"/></div>
+            <div class="field"><label class="small">Email</label><input id="supEmail" placeholder="you@example.com"/></div>
+          </div>
+          <div class="field"><label class="small">Contact number</label><input id="supPhone" placeholder="+27XXXXXXXXX"/></div>
+          <div class="field"><label class="small">Message</label><textarea id="supMsg" rows="4" placeholder="Describe your issue…"></textarea></div>
+          <button class="btn primary" id="supSend" type="button">Send</button>
+          <div class="small" style="margin-top:8px">Prefer to call? <a href="tel:0784079686">078 407 9686</a></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+<main id="page-admin" class="page">
+  <section class="section">
+    <div class="title">Admin</div>
+    <div class="admin-note" id="adminRoleNote">Checking admin access…</div>
+
+    <div class="admin-tabs" id="adminTabs">
+      <button class="btn ghost" data-admin-tab="orders" type="button">Orders</button>
+      <button class="btn ghost" data-admin-tab="vendors" type="button">Vendors (Food)</button>
+      <button class="btn ghost" data-admin-tab="market" type="button">Marketplace</button>
+      <button class="btn ghost" data-admin-tab="users" type="button">Users/KYC</button>
+      <button class="btn ghost" data-admin-tab="wallet" type="button">Wallet</button>
+      <button class="btn ghost" data-admin-tab="emergency" type="button">Emergency</button>
+      <button class="btn ghost" data-admin-tab="promos" type="button">Promotions</button>
+    </div>
+
+    <div id="adminView">
+      <div id="admin-orders" class="admin-grid" style="display:none"></div>
+      <div id="admin-vendors" class="admin-grid" style="display:none"></div>
+      <div id="admin-market" class="admin-grid" style="display:none"></div>
+      <div id="admin-users" class="admin-grid" style="display:none"></div>
+      <div id="admin-wallet" class="admin-grid" style="display:none"></div>
+      <div id="admin-emergency" class="admin-grid" style="display:none">
+        <div class="card">
+          <div class="list">
+            <div class="field"><label class="small">Region (e.g., ZA-GP)</label><input id="admEmerRegion" placeholder="Country/Area code"/></div>
+            <div class="field"><label class="small">Default emergency number</label><input id="admEmerNumber" placeholder="+27…"/></div>
+            <button class="btn primary" id="admEmerSave" type="button">Save default</button>
+            <div class="small muted" id="admEmerStatus"></div>
+          </div>
+        </div>
+      </div>
+      <div id="admin-promos" class="admin-grid" style="display:none">
+        <div class="card">
+          <div class="list">
+            <div class="field"><label class="small">Title</label><input id="admPromoTitle" placeholder="e.g., High‑rated taxi drivers around you"/></div>
+            <div class="field"><label class="small">Type</label>
+              <select id="admPromoType">
+                <option value="transport">transport</option>
+                <option value="providers">providers</option>
+                <option value="marketplace">marketplace</option>
+                <option value="food">food</option>
+              </select>
+            </div>
+            <div class="field"><label class="small">Payload (JSON)</label><textarea id="admPromoPayload" rows="3" placeholder='{"kind":"taxi"}'></textarea></div>
+            <button class="btn primary" id="admPromoSave" type="button">Publish</button>
+            <div class="small muted" id="admPromoStatus"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="title" style="margin:0 0 6px">Existing promotions</div>
+          <div id="admPromoList" class="list"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+  
+  <nav class="nav">
+    <button data-page="home" class="active" type="button">🏠 Home</button>
+    <button data-page="orders" type="button">📋 My Bookings</button>
+    <button data-page="marketplace" type="button">🛍️ Marketplace</button>
+    <button data-page="profile" type="button">👤 Profile</button>
+  </nav>
+
+  <!-- All the modals (keeping them minimal for now) -->
+  
+  <!-- Sell Products Modal with improved image handling -->
+  <div class="modal" id="sellModal">
+    <div class="sheet">
+      <div class="head">
+        <button class="btn ghost" id="sellBack" type="button">← Back</button>
+        <strong>Sell a product</strong>
+        <button class="btn ghost" type="button" onclick="document.getElementById('sellModal').classList.remove('open')">✖</button>
+      </div>
+      <div class="body">
+        <div class="grid-2">
+          <div class="field">
+            <label class="small">Category</label>
+            <select id="sellCat">
+              <option value="electronics">Electronics</option>
+              <option value="fashion">Fashion</option>
+              <option value="home">Home & Garden</option>
+              <option value="sports">Sports</option>
+              <option value="automobile">Automobile</option>
+              <option value="spares">Spare Parts</option>
+              <option value="others">Others</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="small">Type</label>
+            <input id="sellType" placeholder="e.g., Phone"/>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="small">Title</label>
+            <input id="sellTitle"/>
+          </div>
+          <div class="field">
+            <label class="small">Price</label>
+            <input id="sellPrice" type="number" min="0" step="0.01"/>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="small">Stock</label>
+            <input id="sellStock" type="number" min="0"/>
+          </div>
+          <div class="field">
+            <label class="small">Images (up to 10)</label>
+            <input id="sellImages" type="file" accept="image/*" multiple/>
+            <div class="marketplace-images" id="sellImagePreview"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="small">Description</label>
+          <textarea id="sellDesc" rows="3"></textarea>
+        </div>
+        <div class="row" style="gap:6px">
+          <button class="btn primary" id="sellSubmit" type="button">Submit</button>
+          <button class="btn ghost" id="sellCall" type="button">📞 Call</button>
+          <button class="btn ghost" id="sellWhatsApp" type="button">🟢 WhatsApp</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Product Modal -->
+  <div class="modal" id="editProductModal">
+    <div class="sheet">
+      <div class="head">
+        <strong>Edit Food Item</strong>
+        <button class="btn ghost" id="editProductClose" type="button">✖</button>
+      </div>
+      <div class="body">
+        <form id="editProductForm">
+          <div class="grid-2">
+            <div class="field">
+              <label class="small">Subcategory</label>
+              <select id="editKind">
+                <option value="fastfood">Fast food</option>
+                <option value="grocery">Grocery</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="small">Title</label>
+              <input id="editTitle" placeholder="Item title"/>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label class="small">Price</label>
+              <input id="editPrice" type="number" min="0" step="0.01"/>
+            </div>
+            <div class="field">
+              <label class="small">Images (up to 5)</label>
+              <input id="editImages" type="file" accept="image/*" multiple/>
+              <div class="image-upload-grid" id="editImagePreview"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label class="small">Description</label>
+            <textarea id="editDesc" rows="2"></textarea>
+          </div>
+          <div class="row" style="gap:8px">
+            <label><input type="checkbox" id="editPmCard"/> Card</label>
+            <label><input type="checkbox" id="editPmCash"/> Cash</label>
+          </div>
+          <div class="row" style="gap:8px; margin-top:10px">
+            <button class="btn primary" type="button" id="saveEditProduct">Save Changes</button>
+            <button class="btn ghost" type="button" id="cancelEditProduct">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Delivery Modal -->
+  <div class="modal" id="confirmCodeModal" style="display:none">
+    <div class="sheet">
+      <div class="head">
+        <strong>Confirm Delivery</strong>
+        <button class="btn ghost" id="dlvCodeClose" type="button">✖</button>
+      </div>
+      <div class="body">
+        <div class="small muted" style="margin-bottom:6px">Enter the buyer's 6‑digit delivery code to complete the order.</div>
+        <div class="row" style="gap:8px">
+          <input id="dlvCodeInput" placeholder="e.g., 123456" inputmode="numeric" style="flex:1"/>
+          <button class="btn primary" id="dlvCodeSubmit" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button class="floating-panic" id="panicBtn" title="Emergency">🚨</button>
+
+  <div id="splash" style="position:fixed;inset:0;background:linear-gradient(135deg,#2563EB 0%,#1D4ED8 100%);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff">
+    <div style="font-size:28px;font-weight:800;margin-top:12px">ZippUp</div>
+    <div style="opacity:.9;margin-top:4px">On‑demand services, fast.</div>
+  </div>
+
+  <!-- Auth modal (overlay only) -->
+  <div class="modal" id="authModal" style="display:none">
+    <div class="sheet" style="height:100vh;width:100vw;max-width:none;border-radius:0;border:0;background:var(--bg);display:flex;flex-direction:column">
+      <div class="head" style="border:0;justify-content:center">
+        <div style="text-align:center;margin:6px 0 0">
+          <div style="font-size:42px">🚀</div>
+          <div style="margin-top:4px;color:var(--muted);font-weight:600">ZippUp: Hustle faster!</div>
+        </div>
+      </div>
+      <div class="body" style="display:flex;align-items:center;justify-content:center">
+        <div id="authCard" style="width:100%;max-width:420px;background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:18px">
+          <div id="authTabs" style="display:grid;grid-auto-flow:column;gap:8px;margin:10px 0 12px">
+            <button id="tabSignIn" class="btn ghost" type="button">Sign in</button>
+            <button id="tabSignUp" class="btn ghost" type="button">Sign up</button>
+            <button id="tabPhone" class="btn ghost" type="button">Phone</button>
+            <button id="tabReset" class="btn ghost" type="button">Recover</button>
+          </div>
+
+          <div id="paneSignIn" class="auth-pane">
+            <div class="field"><label class="small">Email</label><input id="inEmail" placeholder="you@example.com"/></div>
+            <div class="field"><label class="small">Password</label><input id="inPass" type="password" placeholder="••••••••"/></div>
+            <button class="btn primary block" id="btnSignIn" type="button">Continue</button>
+            <div class="small muted" style="margin:10px 0; text-align:center">or</div>
+            <button class="btn block" id="googleBtn" type="button" style="background:#fff;border:1px solid var(--border)">🔵 Continue with Google</button>
+          </div>
+
+          <div id="paneSignUp" class="auth-pane" style="display:none">
+            <div class="field"><label class="small">Name</label><input id="upName" placeholder="Your name"/></div>
+            <div class="field"><label class="small">Email</label><input id="upEmail" placeholder="you@example.com"/></div>
+            <div class="field"><label class="small">Password</label><input id="upPass" type="password" placeholder="At least 6 characters"/></div>
+            <button class="btn primary block" id="btnSignUp" type="button">Create account</button>
+            <div class="small muted" style="margin:10px 0; text-align:center">or</div>
+            <button class="btn block" id="googleBtn2" type="button" style="background:#fff;border:1px solid var(--border)">🔵 Continue with Google</button>
+          </div>
+
+          <div id="panePhone" class="auth-pane" style="display:none">
+            <div class="field"><label class="small">Phone (with country code)</label><input id="phNumber" placeholder="+27XXXXXXXXX"/></div>
+            <div id="recaptcha-container" style="margin:6px 0"></div>
+            <button class="btn primary block" id="btnPhoneSend" type="button">Send code</button>
+            <div class="field" style="margin-top:10px"><label class="small">Verification code</label><input id="phCode" placeholder="123456"/></div>
+            <button class="btn primary block" id="btnPhoneVerify" type="button">Verify & Sign in</button>
+          </div>
+
+          <div id="paneReset" class="auth-pane" style="display:none">
+            <div class="field"><label class="small">Email</label><input id="rsEmail" placeholder="you@example.com"/></div>
+            <button class="btn primary block" id="btnReset" type="button">Send reset link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BASE_API = 'https://zippup-backend-v3.onrender.com';
+    window.BASE_API = BASE_API;
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyApgmcfu5qGFn9tw872dQ2KkdDz_GPmL70",
+      authDomain: "zippup-535ca.firebaseapp.com",
+      projectId: "zippup-535ca",
+      appId: "1:382212325227:web:c04d91386817c7cff7d62e",
+      messagingSenderId: "382212325227",
+      measurementId: "G-YKJEVL8M6V"
+    };
+    if (!window.firebase?.apps?.length) firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{});
+    const db = firebase.firestore();
+
+    // ==================== USER PROFILE MANAGEMENT (FIXED) ====================
+    let currentUser = null;
+    let user = { name:'Guest', email:'guest@example.com', wallet: 0 };
+    let coords = null, homeMap=null, vehicleMarkers=[];
+    let cart = loadCart();
+    let orders = getOrders();
+    let notifications = getNotifications();
+
+    // Get current user's UID (this is the key fix for profile sharing issue)
+    function getCurrentUID() {
+      return currentUser?.uid || 'guest';
+    }
+
+    // User-specific data keys using UID
+    function getUserDataKey(type) {
+      const uid = getCurrentUID();
+      return `zup_${type}_${uid}`;
+    }
+
+    function loadCart(){ try{ return JSON.parse(localStorage.getItem(getUserDataKey('cart'))||'{"vendorId":null,"vendorName":null,"vendorPayment":[],"items":[]}'); }catch{ return { vendorId:null, vendorName:null, vendorPayment:[], items:[] } } }
+    function saveCart(){ localStorage.setItem(getUserDataKey('cart'), JSON.stringify(cart)); }
+    function resetCart(){ cart={ vendorId:null, vendorName:null, vendorPayment:[], items:[] }; saveCart(); }
+
+    function getOrders(){ try{ return JSON.parse(localStorage.getItem(getUserDataKey('orders'))||'[]'); } catch{ return []; } }
+    function setOrders(o){ orders=o||[]; localStorage.setItem(getUserDataKey('orders'), JSON.stringify(orders)); }
+    function getNotifications(){ try{ return JSON.parse(localStorage.getItem(getUserDataKey('notifications'))||'[]'); } catch{ return []; } }
+    function setNotifications(n){ notifications=n||[]; localStorage.setItem(getUserDataKey('notifications'), JSON.stringify(notifications)); }
+
+    function getFoodItems(){ try{ return JSON.parse(localStorage.getItem(getUserDataKey('food_items'))||'[]'); } catch{ return []; } }
+    function setFoodItems(x){ localStorage.setItem(getUserDataKey('food_items'), JSON.stringify(x||[])); }
+
+    function getUserProducts(){ try{ return JSON.parse(localStorage.getItem(getUserDataKey('marketplace_products'))||'[]'); } catch{ return []; } }
+    function setUserProducts(arr){ localStorage.setItem(getUserDataKey('marketplace_products'), JSON.stringify(arr||[])); }
+
+    // ==================== IMAGE UPLOAD HANDLING (FIXED) ====================
+    function createImageUploadGrid(container, maxImages = 5) {
+      container.innerHTML = '';
+      
+      for (let i = 0; i < maxImages; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'image-slot';
+        slot.innerHTML = '<span style="font-size:24px;color:#ccc">+</span>';
+        slot.onclick = () => triggerImageUpload(slot, container);
+        container.appendChild(slot);
+      }
+    }
+
+    function triggerImageUpload(slot, container) {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            slot.className = 'image-slot filled';
+            slot.innerHTML = `
+              <img src="${e.target.result}" alt="Preview">
+              <button class="remove" onclick="removeImage(this)">&times;</button>
+            `;
+            slot.dataset.imageData = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+    }
+
+    function removeImage(button) {
+      const slot = button.parentElement;
+      slot.className = 'image-slot';
+      slot.innerHTML = '<span style="font-size:24px;color:#ccc">+</span>';
+      delete slot.dataset.imageData;
+    }
+
+    function getImagesFromGrid(container) {
+      const slots = container.querySelectorAll('.image-slot.filled');
+      return Array.from(slots).map(slot => slot.dataset.imageData).filter(Boolean);
+    }
+
+    const $ = s => document.querySelector(s);
+    const $$ = s => Array.from(document.querySelectorAll(s));
+    function money(n){ return `$${(+n||0).toFixed(2)}`; }
+    function showPage(id){
+      $$('.page').forEach(p=>p.classList.remove('active'));
+      const el=$('#page-'+id); if (el) el.classList.add('active');
+      $$('.nav button').forEach(b=>b.classList.toggle('active', b.getAttribute('data-page')===id));
+    }
+
+    function updateProfileUI(){
+      $('#profName').textContent=(user?.name||'Guest');
+      $('#profEmail').textContent=(user?.email||'guest@example.com');
+      const saved=localStorage.getItem(getUserDataKey('profile_photo'));
+      if (saved) { const av=$('#user-avatar'); av.style.backgroundImage=`url("${saved}")`; av.style.backgroundSize='cover'; av.style.backgroundPosition='center'; av.textContent=''; }
+    }
+
+    $$('.nav button').forEach(b=>{
+      b.onclick = ()=>{
+        const page=b.getAttribute('data-page');
+        showPage(page);
+        if (page==='marketplace') { renderMarketplace(); }
+        if (page==='wallet') { openWallet(); }
+        if (page==='orders') { renderOrders(); }
+      };
+    });
+
+    $('#profileBtn').onclick = (e)=>{ e.stopPropagation(); const m=$('#profileMenu'); m.style.display = (m.style.display==='block'?'none':'block'); };
+    document.addEventListener('click', ()=>{ const m=$('#profileMenu'); if (m) m.style.display='none'; });
+    $('#menuProfile').onclick = ()=>{ $('#profileMenu').style.display='none'; showPage('profile'); };
+    $('#menuOrders').onclick  = ()=>{ $('#profileMenu').style.display='none'; showPage('orders'); renderOrders(); };
+    $('#menuWallet').onclick  = ()=>{ $('#profileMenu').style.display='none'; showPage('wallet'); };
+    $('#menuTopup').onclick   = ()=>{ $('#profileMenu').style.display='none'; showPage('digital'); };
+    $('#menuSupport').onclick = ()=>{ $('#profileMenu').style.display='none'; showPage('support'); };
+    $('#menuLogout').onclick  = async ()=>{
+      $('#profileMenu').style.display='none';
+      try{ await auth.signOut(); }catch{}
+      user = { name:'Guest', email:'' };
+      $('#authModal').style.display='flex'; $('#authModal').classList.add('open');
+    };
+
+    const SERVICES = [
+      { id:'transport',   name:'Transport',         icon:'🚗', desc:'Ride & moving' },
+      { id:'food',        name:'Food',              icon:'🍔', desc:'Restaurants & groceries' },
+      { id:'tech',        name:'Tech',              icon:'🔧', desc:'Phone/computer/ repair' },
+      { id:'home',        name:'Home',              icon:'🏠', desc:'Cleaning, maintenance, fixes & more' },
+      { id:'construction',name:'Construction',      icon:'🏗️', desc:'Builders, Plumbers, electricians & more' },
+      { id:'auto',        name:'Automobile',        icon:'🛠️', desc:'Mechanics, tires, roadside' },
+      { id:'digital',     name:'Digital Services',  icon:'💳', desc:'Airtime, data, bills, digital products' },
+      { id:'marketplace', name:'Marketplace',       icon:'🛍️', desc:'Buy & Sell (contact sellers)' },
+      { id:'others',      name:'Others',            icon:'🎯', desc:'Events, tutors, more' },
+    ];
+    const EMERGENCY = [
+      { id:'ambulance', name:'Ambulance', icon:'🚑' },
+      { id:'fire',      name:'Fire Service', icon:'🚒' },
+      { id:'towing',    name:'Towing', icon:'🚛' },
+      { id:'security',  name:'Security', icon:'🛡️' },
+      { id:'roadside',  name:'Roadside', icon:'🔧' },
+    ];
+
+    function renderServices(){
+      const grid = $('#servicesGrid'); grid.innerHTML='';
+      SERVICES.forEach(s=>{
+        const el=document.createElement('div'); el.className='card service';
+        el.innerHTML = `<div class="row"><div style="font-size:28px">${s.icon}</div><h4>${s.name}</h4></div><div class="small muted" style="margin-top:6px">${s.desc}</div>`;
+        el.onclick = ()=> openCategory(s.id, s.name);
+        grid.appendChild(el);
+      });
+    }
+    function renderEmergency(){
+      const grid = $('#emergencyGrid'); grid.innerHTML='';
+      EMERGENCY.forEach(e=>{
+        const el=document.createElement('div'); el.className='card service';
+        el.innerHTML = `<div class="row"><div style="font-size:28px">${e.icon}</div><h4>${e.name}</h4></div>`;
+        el.onclick = ()=> alert(`Calling ${e.name}...`);
+        grid.appendChild(el);
+      });
+    }
+
+    function openCategory(catId, label){
+      if (catId==='digital'){ showPage('digital'); return; }
+      if (catId==='marketplace'){ showPage('marketplace'); return; }
+      alert(`Opening ${label} providers...`);
+    }
+
+    let MP_PRODUCTS = [
+      { id:'p100', title:'Smartphone X', cat:'electronics', price:499, stock:12, img:'https://images.unsplash.com/photo-1510552776732-01acc9a4c14f?q=80&w=800&auto=format&fit=crop', seller:'Tony', phone:'+12025550123' },
+      { id:'p200', title:'Running Shoes', cat:'sports', price:79,  stock:18, img:'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=800&auto=format&fit=crop', seller:'Kelvin', phone:'+12025550124' },
+    ];
+
+    function renderMarketplace(category = null, query = '') {
+      const grid = $('#mpGrid');
+      const allProducts = [...MP_PRODUCTS, ...getUserProducts()];
+      
+      const filteredProducts = allProducts.filter(p => {
+        if (category && p.cat !== category) return false;
+        if (query && !(p.title.toLowerCase().includes(query) || String(p.cat).toLowerCase().includes(query))) return false;
+        return true;
+      });
+
+      if (!filteredProducts.length) {
+        grid.innerHTML = '<div class="small muted">No products found.</div>';
+        return;
+      }
+
+      grid.innerHTML = filteredProducts.map(p => `
+        <div class="card product">
+          <img src="${p.img || p.images?.[0] || 'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=800&auto=format&fit=crop'}" alt="${p.title}"/>
+          <div><strong>${p.title}</strong></div>
+          <div class="row" style="justify-content:space-between">
+            <div class="price">${money(p.price)}</div>
+            <div class="small muted">Seller: ${p.seller || 'Unknown'}</div>
+          </div>
+          <div class="row" style="gap:8px;margin-top:6px">
+            <button class="btn primary" onclick="openChat('${p.seller || 'Seller'}')">💬 Chat</button>
+            <button class="btn ghost" onclick="location.href='tel:${p.phone || '+12025550123'}'">📞 Call</button>
+            <button class="btn ghost" onclick="location.href='https://wa.me/${(p.phone || '+12025550123').replace(/\\D/g,'')}'">🟢 WhatsApp</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function initMarketplace() {
+      const chips = $('#mpChips');
+      const categories = [
+        { id: 'electronics', name: 'Electronics' },
+        { id: 'fashion', name: 'Fashion' },
+        { id: 'home', name: 'Home & Garden' },
+        { id: 'sports', name: 'Sports' },
+        { id: 'automobile', name: 'Automobile' },
+        { id: 'spares', name: 'Spare Parts' },
+        { id: 'others', name: 'Others' }
+      ];
+      
+      chips.innerHTML = '';
+      categories.forEach(c => {
+        const btn = document.createElement('button');
+        btn.className = 'btn ghost';
+        btn.textContent = c.name;
+        btn.onclick = () => renderMarketplace(c.id, $('#mpSearch').value.trim().toLowerCase());
+        chips.appendChild(btn);
+      });
+      
+      renderMarketplace();
+      
+      $('#sellProductsBtn').onclick = () => {
+        const previewGrid = $('#sellImagePreview');
+        createImageUploadGrid(previewGrid, 10);
+        $('#sellModal').classList.add('open');
+      };
+      $('#mpSearchBtn').onclick = () => renderMarketplace(null, $('#mpSearch').value.trim().toLowerCase());
+      $('#sellSubmit').onclick = submitMarketplace;
+      $('#sellBack').onclick = () => $('#sellModal').classList.remove('open');
+    }
+
+    async function submitMarketplace() {
+      const cat = $('#sellCat').value;
+      const type = $('#sellType').value.trim();
+      const title = $('#sellTitle').value.trim();
+      const price = parseFloat($('#sellPrice').value || '0');
+      const stock = parseInt($('#sellStock').value || '0', 10);
+      const desc = $('#sellDesc').value.trim();
+      
+      if (!title || !price || !stock) {
+        alert('Please fill in title, price, and stock');
+        return;
+      }
+
+      const previewGrid = $('#sellImagePreview');
+      const images = getImagesFromGrid(previewGrid);
+
+      const item = {
+        id: 'mp' + Date.now() + Math.random(),
+        cat, type, title, price, stock, desc, images,
+        img: images[0] || 'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=800&auto=format&fit=crop',
+        seller: user.name || 'You',
+        phone: '+12025550123',
+        userId: getCurrentUID()
+      };
+
+      const products = getUserProducts();
+      products.unshift(item);
+      setUserProducts(products);
+
+      // Reset form
+      $('#sellCat').value = 'electronics';
+      $('#sellType').value = '';
+      $('#sellTitle').value = '';
+      $('#sellPrice').value = '';
+      $('#sellStock').value = '';
+      $('#sellDesc').value = '';
+      createImageUploadGrid(previewGrid, 10);
+
+      $('#sellModal').classList.remove('open');
+      renderMarketplace();
+      alert('Product listed successfully!');
+    }
+
+    $('#manageProductsBtn').onclick = () => {
+      showPage('profile');
+      $('#page-manage-products').classList.add('active');
+      ensureFoodRow();
+      renderFoodItemsList();
+    };
+
+    $('#mpBack').onclick = () => showPage('profile');
+
+    function foodRowTemplate() {
+      const div = document.createElement('div');
+      div.className = 'card';
+      div.innerHTML = `
+        <div class="grid-2">
+          <div class="field">
+            <label class="small">Subcategory</label>
+            <select data-k="kind">
+              <option value="fastfood">Fast food</option>
+              <option value="grocery">Grocery</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="small">Title</label>
+            <input data-k="title" placeholder="Item title"/>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="small">Price</label>
+            <input data-k="price" type="number" min="0" step="0.01"/>
+          </div>
+          <div class="field">
+            <label class="small">Images (up to 5)</label>
+            <div class="image-upload-grid" data-k="images"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label class="small">Description</label>
+          <textarea data-k="desc" rows="2"></textarea>
+        </div>
+        <div class="row" style="gap:8px">
+          <label><input type="checkbox" data-k="pm-card" checked/> Card</label>
+          <label><input type="checkbox" data-k="pm-cash"/> Cash</label>
+          <button class="btn ghost" data-k="rm" type="button" style="margin-left:auto">Remove</button>
+        </div>
+      `;
+      
+      const imageGrid = div.querySelector('[data-k="images"]');
+      createImageUploadGrid(imageGrid, 5);
+      
+      div.querySelector('[data-k="rm"]').onclick = () => div.remove();
+      return div;
+    }
+
+    function ensureFoodRow() {
+      const form = $('#foodItemsForm');
+      if (!form.children.length) {
+        form.appendChild(foodRowTemplate());
+      }
+    }
+
+    function renderFoodItemsList() {
+      const box = $('#foodItemsList');
+      const items = getFoodItems();
+      
+      if (!items.length) {
+        box.innerHTML = '<div class="small muted">No items yet</div>';
+        return;
+      }
+
+      box.innerHTML = items.map(item => `
+        <div class="card" data-item-id="${item.id}">
+          <div class="row" style="justify-content:space-between; align-items:flex-start">
+            <div class="row">
+              ${item.images && item.images.length > 0 ? 
+                `<img src="${item.images[0]}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"/>` : 
+                '<div style="width:60px;height:60px;background:#f3f4f6;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center">📷</div>'
+              }
+              <div style="margin-left:8px">
+                <div><strong>${item.title}</strong> <span class="small muted">${item.kind}</span></div>
+                <div class="small muted">$${(item.price || 0).toFixed(2)}</div>
+                <div class="small muted">Payment: ${(item.payment || []).join(', ')}</div>
+                ${item.images && item.images.length > 1 ? `<div class="small muted">${item.images.length} images</div>` : ''}
+              </div>
+            </div>
+            <div class="row" style="gap:6px">
+              <button class="edit-btn" onclick="editFoodItem('${item.id}')">Edit</button>
+              <button class="btn ghost" onclick="deleteFoodItemConfirm('${item.id}')" style="color:var(--danger)">Delete</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    let editingItemId = null;
+
+    function editFoodItem(itemId) {
+      const items = getFoodItems();
+      const item = items.find(i => i.id === itemId);
+      if (!item) return;
+
+      editingItemId = itemId;
+
+      $('#editKind').value = item.kind || 'fastfood';
+      $('#editTitle').value = item.title || '';
+      $('#editPrice').value = item.price || '';
+      $('#editDesc').value = item.desc || '';
+      $('#editPmCard').checked = (item.payment || []).includes('card');
+      $('#editPmCash').checked = (item.payment || []).includes('cash');
+
+      const previewGrid = $('#editImagePreview');
+      createImageUploadGrid(previewGrid, 5);
+      
+      if (item.images && item.images.length > 0) {
+        item.images.forEach((imageData, index) => {
+          const slot = previewGrid.children[index];
+          if (slot) {
+            slot.className = 'image-slot filled';
+            slot.innerHTML = `
+              <img src="${imageData}" alt="Preview">
+              <button class="remove" onclick="removeImage(this)">&times;</button>
+            `;
+            slot.dataset.imageData = imageData;
+          }
+        });
+      }
+
+      $('#editProductModal').classList.add('open');
+      $('#editProductModal').style.display = 'flex';
+    }
+
+    function deleteFoodItemConfirm(itemId) {
+      if (confirm('Are you sure you want to delete this item?')) {
+        const items = getFoodItems();
+        const filtered = items.filter(item => item.id !== itemId);
+        setFoodItems(filtered);
+        renderFoodItemsList();
+      }
+    }
+
+    $('#addFoodRow').onclick = () => {
+      $('#foodItemsForm').appendChild(foodRowTemplate());
+    };
+
+    $('#saveFoodItems').onclick = async () => {
+      const rows = Array.from($('#foodItemsForm').children || []);
+      if (!rows.length) {
+        alert('Add at least one item');
+        return;
+      }
+
+      const items = [];
+      for (const row of rows) {
+        const kind = row.querySelector('[data-k="kind"]').value;
+        const title = row.querySelector('[data-k="title"]').value.trim();
+        const price = parseFloat(row.querySelector('[data-k="price"]').value || '0');
+        const desc = row.querySelector('[data-k="desc"]').value.trim();
+        const imageGrid = row.querySelector('[data-k="images"]');
+        const images = getImagesFromGrid(imageGrid);
+        
+        const pm = [];
+        if (row.querySelector('[data-k="pm-card"]').checked) pm.push('card');
+        if (row.querySelector('[data-k="pm-cash"]').checked) pm.push('cash');
+
+        if (!title || !price) continue;
+
+        items.push({
+          id: 'fi' + Date.now() + Math.random(),
+          kind, title, price, desc, images, payment: pm,
+          userId: getCurrentUID()
+        });
+      }
+
+      const currentItems = getFoodItems();
+      setFoodItems(items.concat(currentItems));
+
+      $('#foodItemsForm').innerHTML = '';
+      ensureFoodRow();
+      renderFoodItemsList();
+      alert(`${items.length} items saved successfully!`);
+    };
+
+    $('#editProductClose').onclick = () => {
+      $('#editProductModal').classList.remove('open');
+      $('#editProductModal').style.display = 'none';
+    };
+
+    $('#cancelEditProduct').onclick = () => {
+      $('#editProductModal').classList.remove('open');
+      $('#editProductModal').style.display = 'none';
+    };
+
+    $('#saveEditProduct').onclick = () => {
+      if (!editingItemId) return;
+
+      const updates = {
+        kind: $('#editKind').value,
+        title: $('#editTitle').value.trim(),
+        price: parseFloat($('#editPrice').value || '0'),
+        desc: $('#editDesc').value.trim(),
+        images: getImagesFromGrid($('#editImagePreview')),
+        payment: []
+      };
+
+      if ($('#editPmCard').checked) updates.payment.push('card');
+      if ($('#editPmCash').checked) updates.payment.push('cash');
+
+      if (!updates.title || !updates.price) {
+        alert('Please fill in title and price');
+        return;
+      }
+
+      const items = getFoodItems();
+      const index = items.findIndex(item => item.id === editingItemId);
+      if (index >= 0) {
+        items[index] = { ...items[index], ...updates };
+        setFoodItems(items);
+        renderFoodItemsList();
+      }
+
+      $('#editProductModal').classList.remove('open');
+      $('#editProductModal').style.display = 'none';
+      editingItemId = null;
+
+      alert('Item updated successfully!');
+    };
+
+    $('#openConfirmCode').onclick = () => {
+      $('#confirmCodeModal').style.display = 'flex';
+      $('#confirmCodeModal').classList.add('open');
+      $('#dlvCodeInput').focus();
+    };
+
+    $('#dlvCodeClose').onclick = () => {
+      $('#confirmCodeModal').classList.remove('open');
+      $('#confirmCodeModal').style.display = 'none';
+    };
+
+    function renderOrders() {
+      const active = $('#buyerOrders');
+      const history = $('#sellerOrders');
+      const activeOrders = orders.filter(o => ['preparing', 'assigned', 'enroute', 'scheduled'].includes(o.status));
+      const pastOrders = orders.filter(o => ['completed', 'canceled'].includes(o.status));
+
+      active.innerHTML = activeOrders.map(o => {
+        const title = o.type === 'food' ? (o.vendorName || 'Food order') : (o.title || o.type);
+        const extra = o.type === 'food' && o.code ? 
+          `<div class="small muted">Code: <span style="font-family:monospace">${o.code}</span></div>` : '';
+        
+        return `
+          <div class="card">
+            <div><strong>${title}</strong> <span class="small muted">• ${o.status}</span>${extra}</div>
+            <div class="row" style="gap:6px;margin-top:6px">
+              <button class="btn primary" data-k="track" data-id="${o.id}">Track</button>
+              <button class="btn ghost" data-k="cancel" data-id="${o.id}">Cancel</button>
+            </div>
+          </div>
+        `;
+      }).join('') || '<div class="small muted">No active bookings</div>';
+
+      history.innerHTML = pastOrders.map(o => `
+        <div class="card">
+          <div><strong>${o.title || o.type}</strong> <span class="small muted">• ${o.status}</span></div>
+        </div>
+      `).join('') || '<div class="small muted">No history yet</div>';
+    }
+
+    function openWallet(){
+      $('#walletBalance').textContent = money(user.wallet||0);
+      const tx = [];
+      $('#walletTx').innerHTML = '<div class="small muted">No transactions</div>';
+    }
+
+    function openChat(peer) {
+      alert(`Chat with ${peer} - Feature coming soon!`);
+    }
+
+    async function initLocation(){
+      try {
+        const pos = await new Promise((res, rej)=>navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy:true, timeout:8000 }));
+        coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${coords.lat}&lon=${coords.lng}`);
+          const j = await r.json();
+          const addr = j?.display_name || `Lat ${coords.lat.toFixed(4)}, Lng ${coords.lng.toFixed(4)}`;
+          $('#userLocUnder').textContent = addr;
+        } catch {
+          $('#userLocUnder').textContent = `Lat ${coords.lat.toFixed(4)}, Lng ${coords.lng.toFixed(4)}`;
+        }
+      } catch {
+        $('#userLocUnder').textContent = 'Location unavailable';
+      }
+    }
+
+    function initHomeMap(){
+      try {
+        homeMap = L.map('homeMap',{ zoomControl:false }).setView([coords?.lat||0, coords?.lng||0], coords?15:2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(homeMap);
+        if (coords) {
+          for (let i=0;i<6;i++){
+            const lat = coords.lat + (Math.random()-0.5)/100;
+            const lng = coords.lng + (Math.random()-0.5)/100;
+            const m = L.circleMarker([lat,lng],{radius:6,color:'#2563EB',fillColor:'#2563EB',fillOpacity:.9});
+            m.addTo(homeMap); vehicleMarkers.push(m);
+          }
+          setInterval(()=>{
+            vehicleMarkers.forEach(m=>{
+              const p = m.getLatLng();
+              m.setLatLng([p.lat + (Math.random()-0.5)/1000, p.lng + (Math.random()-0.5)/1000]);
+            });
+          }, 1500);
+        }
+      } catch {}
+    }
+
+    // Authentication state change handler
+    auth.onAuthStateChanged(authUser => {
+      if (authUser) {
+        currentUser = authUser;
+        user.email = authUser.email || '';
+        user.name = authUser.displayName || (user.email ? user.email.split('@')[0] : 'Guest');
+        updateProfileUI();
+        $('#authModal').style.display = 'none';
+        $('#authModal').classList.remove('open');
+        // Reload user-specific data
+        cart = loadCart();
+        orders = getOrders();
+        notifications = getNotifications();
+      } else {
+        currentUser = null;
+        user = { name: 'Guest', email: 'guest@example.com', wallet: 0 };
+        updateProfileUI();
+        $('#authModal').style.display = 'flex';
+        $('#authModal').classList.add('open');
+      }
+    });
+
+    // Make key functions globally available
+    window.editFoodItem = editFoodItem;
+    window.deleteFoodItemConfirm = deleteFoodItemConfirm;
+    window.removeImage = removeImage;
+    window.openChat = openChat;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      showPage('home');
+      renderServices();
+      renderEmergency();
+      initMarketplace();
+      await initLocation();
+      initHomeMap();
+      updateProfileUI();
+      ensureFoodRow();
+      renderFoodItemsList();
+      setTimeout(() => {
+        const splash = $('#splash');
+        if (splash) {
+          splash.style.opacity = '0';
+          setTimeout(() => splash.remove(), 250);
+        }
+      }, 250);
+    });
+
+    window.addEventListener('load', () => {
+      const splash = $('#splash');
+      if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => splash.remove(), 250);
+      }
+    });
+
+    setTimeout(() => {
+      const splash = $('#splash');
+      if (splash) {
+        splash.style.opacity = '0';
+        setTimeout(() => splash.remove(), 250);
+      }
+    }, 2000);
+  </script>
+
+  <!-- Authentication Scripts -->
+  <script>
+    (function authController(){
+      const $ = s => document.querySelector(s);
+      const tabs = { SignIn:'#paneSignIn', SignUp:'#paneSignUp', Phone:'#panePhone', Reset:'#paneReset' };
+      
+      function setTab(which){
+        Object.keys(tabs).forEach(k => {
+          $('#tab'+k)?.classList.toggle('primary', k === which);
+          $('#tab'+k)?.classList.toggle('ghost', k !== which);
+          const p = document.querySelector(tabs[k]);
+          if (p) p.style.display = (k === which ? 'block' : 'none');
+        });
+      }
+      
+      $('#tabSignIn')?.addEventListener('click', () => setTab('SignIn'));
+      $('#tabSignUp')?.addEventListener('click', () => setTab('SignUp'));
+      $('#tabPhone')?.addEventListener('click', () => setTab('Phone'));
+      $('#tabReset')?.addEventListener('click', () => setTab('Reset'));
+      setTab('SignIn');
+
+      function provider(){
+        try { return new firebase.auth.GoogleAuthProvider(); } catch { return null; }
+      }
+
+      $('#btnSignIn')?.addEventListener('click', async () => {
+        const email = $('#inEmail')?.value.trim();
+        const pass = $('#inPass')?.value.trim();
+        if (!email || !pass) return alert('Enter email and password');
+        try {
+          await auth.signInWithEmailAndPassword(email, pass);
+        } catch(e) {
+          alert(e?.message || 'Sign in failed');
+        }
+      });
+
+      $('#btnSignUp')?.addEventListener('click', async () => {
+        const name = $('#upName')?.value.trim();
+        const email = $('#upEmail')?.value.trim();
+        const pass = $('#upPass')?.value.trim();
+        if (!name || !email || !pass) return alert('Fill name, email, password');
+        try {
+          const { user: u } = await auth.createUserWithEmailAndPassword(email, pass);
+          try { await u.updateProfile({ displayName: name }); } catch {}
+        } catch(e) {
+          alert(e?.message || 'Sign up failed');
+        }
+      });
+
+      $('#btnReset')?.addEventListener('click', async () => {
+        const email = $('#rsEmail')?.value.trim();
+        if (!email) return alert('Enter your email');
+        try {
+          await auth.sendPasswordResetEmail(email);
+          alert('Reset link sent');
+          setTab('SignIn');
+        } catch(e) {
+          alert(e?.message || 'Failed to send reset link');
+        }
+      });
+
+      const g = provider();
+      const googleSign = async () => {
+        if (!g) return alert('Google not available');
+        try {
+          await auth.signInWithPopup(g);
+        } catch(e) {
+          alert(e?.message || 'Google sign-in failed');
+        }
+      };
+      
+      $('#googleBtn')?.addEventListener('click', googleSign);
+      $('#googleBtn2')?.addEventListener('click', googleSign);
+    })();
+  </script>
+</body>
+</html>
